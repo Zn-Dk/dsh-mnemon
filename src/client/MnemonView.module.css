@@ -485,3 +485,27 @@
   .modalBackdrop, .modal { animation: none !important; }
   .flowConnector[data-active] i::before { display: none; }
 }
+
+/* Governance view (retention filter / bulk forget) */
+.governanceBar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--mn-line); border-radius: 11px; background: var(--mn-layer-1); }
+/* 治理行内的 select 不继承搜索工具条的 width:100% 撑满行为（.listToolbar 是 3 列 grid，勿复用） */
+.governanceBar select { width: auto; min-width: 140px; height: 30px; padding: 0 9px; font-size: 12px; }
+.governanceToggle { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--mn-muted); cursor: pointer; user-select: none; }
+/* Switch 形态：primitives 无 Switch 组件，自绘（checkbox 保留可访问性） */
+.governanceToggle input[type='checkbox'] { appearance: none; width: 30px; height: 16px; margin: 0; border-radius: 999px; background: var(--mn-hover); position: relative; cursor: pointer; transition: background .15s ease; flex: none; }
+.governanceToggle input[type='checkbox']::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--dsw-alias-label-primary, #fff); transition: transform .15s ease; }
+.governanceToggle input[type='checkbox']:checked { background: var(--mn-accent); }
+.governanceToggle input[type='checkbox']:checked::after { transform: translateX(14px); }
+.governanceToggle input[type='checkbox']:focus-visible { outline: 2px solid var(--mn-accent); outline-offset: 2px; }
+.governedRow { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.governedSelect { display: inline-flex; align-items: center; gap: 6px; flex: none; cursor: pointer; }
+.retentionBadge { border-radius: 999px; padding: 2px 8px; font-size: 10px; line-height: 15px; white-space: nowrap; font-weight: 500; }
+/* 徽章用字面颜色：视觉信号不依赖宿主主题的 --dsw-alias-state-* 映射 */
+.governedRow[data-retention='superseded'] .retentionBadge { color: #be185d; background: color-mix(in srgb, #be185d 14%, transparent); }
+.governedRow[data-retention='protected'] .retentionBadge { color: #1a7f37; background: color-mix(in srgb, #1a7f37 14%, transparent); }
+.governedRow[data-retention='normal'] .retentionBadge { color: var(--mn-muted); background: color-mix(in srgb, var(--mn-muted, currentcolor) 14%, transparent); }
+.bulkBar { display: flex; align-items: center; gap: 8px; padding: 8px 0; font-size: 12px; color: var(--mn-muted); flex-wrap: wrap; }
+.bulkConfirmList { display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow: auto; font-size: 12px; }
+.bulkConfirmList p { margin: 0; overflow-wrap: anywhere; }
+.bulkConfirmList strong.bulkWarning { color: var(--mn-danger); }
+.modalActions { display: flex; gap: 8px; justify-content: flex-end; }

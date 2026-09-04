@@ -1358,7 +1358,7 @@ export function RememberPage(props: { client: MemorySpacesPageClient; agentAvail
   return <SidebarModal title={t('remember.title')} description={t('remember.description')} busy={supervising || saving} onClose={props.onClose} footer={props.writeEnabled ? <div className={css.modalFooterActions}><button type="button" data-dialog-close className={css.ghostButton} disabled={supervising || saving} onClick={props.onClose}>{t('common.cancel')}</button><button type="submit" form={rememberFormId} className={css.primaryButton} disabled={supervising || content.trim() === '' || !props.agentAvailable}>{supervising ? t('remember.processing') : t('remember.action')}</button></div> : undefined}>{props.writeEnabled ? composer : <EmptyState glyph="⊘" title={t('remember.readOnlyTitle')}>{t('remember.readOnlyText')}</EmptyState>}</SidebarModal>
 }
 
-export function ListPage(props: { client: MemorySpacesPageClient; revision: number; writeEnabled: boolean; onForget: (insight: Insight) => Promise<void>; onClone: (insight: Insight) => void; onExplore: (query: string) => void }): JSX.Element {
+export function ListPage(props: { client: MemorySpacesPageClient; revision: number; writeEnabled: boolean; onForget: (insight: Insight) => Promise<void>; onClone: (insight: Insight) => void; onExplore: (query: string) => void; onMutate: () => void }): JSX.Element {
   const t = useT()
   const pageSize = 12
   const [query, setQuery] = useState('')
@@ -1368,6 +1368,12 @@ export function ListPage(props: { client: MemorySpacesPageClient; revision: numb
   const [error, setError] = useState<string | null>(null)
   const [visibleLimit, setVisibleLimit] = useState(pageSize)
   const [selectedBodyId, setSelectedBodyId] = useState<string | undefined>()
+  const [governance, setGovernance] = useState(false)
+  const [retention, setRetention] = useState<'all' | 'superseded' | 'protected' | 'normal'>('all')
+  const [orderBy, setOrderBy] = useState<'default' | 'importance' | 'createdAt'>('default')
+  const [orderDir, setOrderDir] = useState<'asc' | 'desc'>('desc')
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set())
+  const [confirmBulk, setConfirmBulk] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -1376,7 +1382,62 @@ export function ListPage(props: { client: MemorySpacesPageClient; revision: numb
   useEffect(() => { setVisibleLimit(pageSize); void load() }, [pageSize, props.revision])
   const submit = (event: FormEvent) => { event.preventDefault(); setVisibleLimit(pageSize); void load() }
   const forget = async (insight: Insight) => { await props.onForget(insight); setView(current => current === null ? current : { ...current, total: Math.max(0, current.total - 1), items: current.items.filter(item => insightKey(item) !== insightKey(insight)) }) }
-  const filteredItems = view?.items.filter(item => selectedBodyId === undefined || item.memoryBodyId === selectedBodyId) ?? []
+  const filteredItems = (view?.items
+    .filter(item => selectedBodyId === undefined || item.memoryBodyId === selectedBodyId)
+    .filter(item => !governance || retention === 'all' || item.retention === retention)
+    .sort((left, right) => {
+      const dir = orderDir === 'asc' ? 1 : -1
+      if (orderBy === 'importance') return dir * ((right.importance ?? 0) - (left.importance ?? 0))
+      if (orderBy === 'createdAt') return dir * String(left.createdAt ?? '').localeCompare(String(right.createdAt ?? ''))
+      return 0
+    }) ?? [])
+  const selectedItems = filteredItems.filter(item => selectedIds.has(insightKey(item)))
+  const selectedSuperseded = selectedItems.filter(item => item.retention === 'superseded')
+  const selectedOther = selectedItems.filter(item => item.retention !== 'superseded')
+  const bulkRef = useRef(false)
+  const bulkForget = async () => {
+    // 防重入：确认按钮可被连点，但删除循环只允许一个在跑。
+    if (bulkRef.current) return
+    bulkRef.current = true
+    // 上游 forget 原语是无差别软删：确认框已按取代状态分组警示。逐条直调
+    // client.forget（绕开 onForget 的逐条 refresh），完成后一次性 onMutate，
+    // 避免循环期间每次删除都触发全量 reload 造成竞态。
+    const forgotten: string[] = []
+    try {
+      for (const item of selectedItems) {
+        await props.client.forget(item.id, item.memoryBodyId)
+        forgotten.push(insightKey(item))
+      }
+      setSelectedIds(new Set())
+      setView(current => current === null ? current : {
+        ...current,
+        total: Math.max(0, current.total - forgotten.length),
+        items: current.items.filter(item => !forgotten.includes(insightKey(item))),
+      })
+      props.onMutate()
+    } catch (error) {
+      console.error('[mnemon-governance] bulk forget failed:', error)
+      props.onMutate()
+    } finally {
+      bulkRef.current = false
+      setConfirmBulk(false)
+    }
+  }
+  const toggleSelected = (insight: Insight) => setSelectedIds(current => {
+    const key = insightKey(insight)
+    const next = new Set(current)
+    if (next.has(key)) next.delete(key); else next.add(key)
+    return next
+  })
+  const allVisibleSelected = filteredItems.length > 0 && filteredItems.every(item => selectedIds.has(insightKey(item)))
+  const toggleSelectAll = () => setSelectedIds(current => {
+    if (allVisibleSelected) {
+      const next = new Set(current)
+      for (const item of filteredItems) next.delete(insightKey(item))
+      return next
+    }
+    return new Set(filteredItems.map(item => insightKey(item)))
+  })
   const visibleItems = filteredItems.slice(0, visibleLimit)
   const sources = view?.sources ?? []
   const waitingForQuery = query.trim() === '' && sources.some(source => source.status === 'query-required' && (selectedBodyId === undefined || source.memoryBodyId === selectedBodyId))
@@ -1387,13 +1448,58 @@ export function ListPage(props: { client: MemorySpacesPageClient; revision: numb
       <PageHeader title={t('content.title')} description={t('content.description')} meta={t('content.count', { count: view === null ? '—' : selectedBodyId === undefined ? view.total : filteredItems.length })} />
       <form className={css.listToolbar} onSubmit={submit}><input aria-label={t('content.filterAria')} value={query} onChange={event => setQuery(event.target.value)} placeholder={t('content.filterPlaceholder')} /><select aria-label={t('content.categoryAria')} value={category} onChange={event => setCategory(event.target.value as Category | '')}><option value="">{t('common.allCategories')}</option>{CATEGORIES.map(value => <option key={value} value={value}>{categoryLabel(t, value)}</option>)}</select><button type="submit" className={css.primaryButton} disabled={loading}>{loading ? t('common.loading') : t('content.apply')}</button></form>
       <div className={css.listNotice}>{t('content.notice')}</div>
+      <div className={css.governanceBar} role="group" aria-label={t('content.governanceAria')}>
+        <label className={css.governanceToggle}>
+          <input type="checkbox" checked={governance} onChange={event => { setGovernance(event.target.checked); setRetention('all'); setSelectedIds(new Set()) }} />
+          <span>{t('content.governanceToggle')}</span>
+        </label>
+        {governance && <>
+          <select aria-label={t('content.retentionAria')} value={retention} onChange={event => { setRetention(event.target.value as typeof retention); setSelectedIds(new Set()) }}>
+            <option value="all">{t('content.retentionAll')}</option>
+            <option value="superseded">{t('content.retentionSuperseded')}</option>
+            <option value="protected">{t('content.retentionProtected')}</option>
+            <option value="normal">{t('content.retentionNormal')}</option>
+          </select>
+          <select aria-label={t('content.orderAria')} value={orderBy} onChange={event => setOrderBy(event.target.value as typeof orderBy)}>
+            <option value="default">{t('content.orderDefault')}</option>
+            <option value="importance">{t('content.orderImportance')}</option>
+            <option value="createdAt">{t('content.orderCreatedAt')}</option>
+          </select>
+          {orderBy !== 'default' && <button type="button" className={css.ghostButton} onClick={() => setOrderDir(current => current === 'asc' ? 'desc' : 'asc')}>
+            {orderDir === 'asc' ? t('content.orderAsc') : t('content.orderDesc')}
+          </button>}
+        </>}
+      </div>
       <ReadSourcePanel title={t('content.sourcesTitle')} sources={sources} selectedBodyId={selectedBodyId} onSelect={selectBody} />
       {error !== null && <div className={css.inlineError} role="alert">{error}</div>}
       <div className={css.asyncResults}>
         {loading && <SectionSpinner label={t('common.loading')} />}
         {!loading && filteredItems.length === 0 && <EmptyState glyph="≡" title={t(waitingForQuery ? 'content.queryRequiredTitle' : 'content.emptyTitle')}>{t(waitingForQuery ? 'content.queryRequiredText' : 'content.emptyText')}</EmptyState>}
-        <div className={css.memoryList}>{visibleItems.map(insight => <InsightCard key={insightKey(insight)} insight={insight} writeEnabled={props.writeEnabled} onForget={forget} onClone={props.onClone} onRelated={() => props.onExplore(insight.content)} />)}</div>
+        {governance && <div className={css.bulkBar} role="group" aria-label={t('content.bulkAria')}>
+          <button type="button" className={css.ghostButton} onClick={toggleSelectAll}>{allVisibleSelected ? t('content.deselectAllFiltered') : t('content.selectAllFiltered')}</button>
+          {selectedIds.size > 0 && <>
+            <span>{t('content.bulkSelected', { count: selectedItems.length })}</span>
+            <button type="button" className={css.dangerButton} onClick={() => setConfirmBulk(true)}>{t('content.bulkForget')}</button>
+          </>}
+        </div>}
+        <div className={css.memoryList}>{visibleItems.map(insight => governance
+          ? <div key={insightKey(insight)} className={css.governedRow} data-retention={insight.retention ?? 'normal'}>
+              <label className={css.governedSelect} title={insight.retention === 'superseded' ? t('content.supersededTitle', { id: insight.superseded?.byId ?? '' }) : undefined}>
+                <input type="checkbox" checked={selectedIds.has(insightKey(insight))} onChange={() => toggleSelected(insight)} />
+                <span className={css.retentionBadge} data-retention={insight.retention ?? 'normal'}>{t(`content.retention.${insight.retention ?? 'normal'}` as MnemonKey)}</span>
+              </label>
+              <InsightCard insight={insight} writeEnabled={props.writeEnabled} onForget={forget} onClone={props.onClone} onRelated={() => props.onExplore(insight.content)} />
+            </div>
+          : <InsightCard key={insightKey(insight)} insight={insight} writeEnabled={props.writeEnabled} onForget={forget} onClone={props.onClone} onRelated={() => props.onExplore(insight.content)} />)}</div>
         {view !== null && !loading && <ProgressiveFooter visible={visibleItems.length} total={filteredItems.length} pageSize={pageSize} onMore={() => setVisibleLimit(value => value + pageSize)} />}
+        {confirmBulk && <SidebarModal title={t('content.bulkConfirmTitle', { count: selectedItems.length })} description={selectedOther.length === 0 ? t('content.bulkConfirmText', { count: selectedSuperseded.length }) : t('content.bulkConfirmMixed', { superseded: selectedSuperseded.length, other: selectedOther.length })} busy={bulkRef.current} onClose={() => setConfirmBulk(false)} footer={<div className={css.modalActions}><button type="button" data-dialog-close className={css.ghostButton} disabled={bulkRef.current} onClick={() => setConfirmBulk(false)}>{t('common.cancel')}</button><button type="button" className={css.dangerButton} disabled={bulkRef.current} onClick={() => { void bulkForget() }}>{t('content.bulkForget')}</button></div>}>
+          <div className={css.bulkConfirmList}>
+            {selectedSuperseded.length > 0 && <strong>{t('content.bulkGroupSuperseded', { count: selectedSuperseded.length })}</strong>}
+            {selectedSuperseded.map(item => <p key={insightKey(item)}>{item.content.slice(0, 120)}</p>)}
+            {selectedOther.length > 0 && <strong className={css.bulkWarning}>{t('content.bulkGroupOther', { count: selectedOther.length })}</strong>}
+            {selectedOther.map(item => <p key={insightKey(item)}>{item.content.slice(0, 120)}</p>)}
+          </div>
+        </SidebarModal>}
       </div>
     </div>
   )

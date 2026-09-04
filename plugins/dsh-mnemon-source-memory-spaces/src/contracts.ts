@@ -286,6 +286,10 @@ export interface Insight {
   /** Owning Provider capabilities at read time; safe to expose to clients. */
   memoryCapabilities?: MemoryProviderCapabilities
   externalUri?: string
+  /** Governance: causal superseded mark (this entry was replaced by byId). */
+  superseded?: { byId: string; reason: string }
+  /** Governance: retention bucket derived from the immune rule (importance>=4 or accessCount>=3). */
+  retention?: 'protected' | 'superseded' | 'normal'
 }
 
 export interface SearchRequest {

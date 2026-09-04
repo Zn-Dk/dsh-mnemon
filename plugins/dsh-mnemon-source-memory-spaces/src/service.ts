@@ -1,5 +1,6 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
+import { DatabaseSync } from 'node:sqlite'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { JsonValue } from './contracts.ts'
@@ -901,7 +902,66 @@ export class MemorySpacesService {
         }
       }
     }))
-    const items = batches.flatMap(({ body, items: bodyItems }) => bodyItems.map(item => ({ ...this.annotate(item, body), color: insightColor(item.category) })))
+    // Governance annotations: mark causal superseded edges and the retention
+    // immune rule once per native store so clients can render a management view
+    // without a per-item edge lookup. Remote providers are annotated as-is.
+    // Read-only SQLite inspection is best-effort: an unavailable store must
+    // never break the listing itself.
+    const supersededBySource = new Map<string, { byId: string; reason: string }>()
+    const immuneIds = new Set<string>()
+    for (const { body } of batches) {
+      if (!this.isNativeBody(body) || body.dbPath === '') continue
+      try {
+        const db = new DatabaseSync(body.dbPath, { readOnly: true })
+        try {
+          const edges = db.prepare("SELECT source_id, target_id, metadata FROM edges WHERE edge_type = 'causal'").all()
+          for (const edge of edges) {
+            let parsed: unknown
+            try { parsed = JSON.parse(String(edge.metadata ?? '{}')) } catch { continue }
+            if (typeof parsed !== 'object' || parsed === null) continue
+            const meta = parsed as { superseded?: unknown; reason?: unknown }
+            if (meta.superseded !== true) continue
+            supersededBySource.set(String(edge.source_id), {
+              byId: String(edge.target_id ?? ''),
+              reason: typeof meta.reason === 'string' ? meta.reason : '',
+            })
+          }
+        } finally {
+          db.close()
+        }
+      } catch {
+        // Superseded metadata is advisory; keep listing on failure.
+      }
+      try {
+        const db = new DatabaseSync(body.dbPath, { readOnly: true })
+        try {
+          let immune: { id: unknown; importance: unknown; effective_importance?: unknown; access_count: unknown }[]
+          try {
+            immune = db.prepare('SELECT id, importance, effective_importance, access_count FROM insights WHERE deleted_at IS NULL').all() as typeof immune
+          } catch {
+            // Older native stores have no effective_importance column.
+            immune = db.prepare('SELECT id, importance, access_count FROM insights WHERE deleted_at IS NULL').all() as typeof immune
+          }
+          for (const row of immune) {
+            const importance = Number(row.effective_importance ?? row.importance ?? 0)
+            if (Number.isFinite(importance) && importance >= 4 || Number(row.access_count) >= 3) immuneIds.add(String(row.id))
+          }
+        } finally {
+          db.close()
+        }
+      } catch {
+        // Retention metadata is advisory; keep listing on failure.
+      }
+    }
+    const items = batches.flatMap(({ body, items: bodyItems }) => bodyItems.map(item => {
+      const superseded = supersededBySource.get(item.id)
+      return {
+        ...this.annotate(item, body),
+        color: insightColor(item.category),
+        retention: superseded !== undefined ? ('superseded' as const) : immuneIds.has(item.id) ? ('protected' as const) : ('normal' as const),
+        ...(superseded === undefined ? {} : { superseded }),
+      }
+    }))
     return {
       items: items.slice(0, limit),
       total: items.length,
