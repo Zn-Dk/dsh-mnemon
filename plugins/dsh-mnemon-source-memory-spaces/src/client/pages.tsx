@@ -142,6 +142,7 @@ function InsightCard(props: {
     providerLabel,
     insight.category !== undefined ? categoryLabel(t, insight.category) : undefined,
     insight.importance !== undefined ? t('common.importance', { value: insight.importance }) : undefined,
+    insight.createdAt !== undefined ? t('common.created', { date: insight.createdAt.slice(0, 10) }) : undefined,
     insight.score !== undefined ? `score ${insight.score.toFixed(3)}` : undefined,
     insight.depth !== undefined ? t('common.hops', { count: insight.depth }) : undefined,
   ].filter((entry): entry is string => entry !== undefined)
