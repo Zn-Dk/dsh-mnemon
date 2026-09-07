@@ -910,7 +910,7 @@ export class MemorySpacesService {
     const supersededBySource = new Map<string, { byId: string; reason: string }>()
     const immuneIds = new Set<string>()
     for (const { body } of batches) {
-      if (!this.isNativeBody(body) || body.dbPath === '') continue
+      if (!this.isNativeSpace(body) || body.dbPath === '') continue
       try {
         const db = new DatabaseSync(body.dbPath, { readOnly: true })
         try {

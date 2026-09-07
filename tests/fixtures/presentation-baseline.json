@@ -1,5 +1,5 @@
 {
-  "revision": "7bcadbcf368798bfee1f2c2c45aa9638c55dd09d",
+  "revision": "f3a7c601f2dbb2b9a69e04725a2d13fd5e26d87e",
   "page": {
     "rules": 1028,
     "rulesSha256": "143b186b539db7311ca741913ef071246199c8c4eceba01dae6c04b418475603",
@@ -42,18 +42,18 @@
   },
   "memorySpaceTerminology": {
     "zh": {
-      "keys": 970,
-      "sha256": "9695883ce974c8285af814e8fa74ee85eefd453bd07bf59e6de9708b69aa1cef"
+      "keys": 998,
+      "sha256": "5098057dbd08aa3faa471f5004f90fb35788adb394fa1ce1f681a6c37516e26b"
     },
     "en": {
-      "keys": 970,
-      "sha256": "0d053d62985459f373effb50f2d1edf9416e3df3f11302353bce8d2608c384e3"
+      "keys": 998,
+      "sha256": "1c8a2e4c1e71fd4001bf1ea5ca4bc6f95ad5ef1ca67c24a9e134bb2bc3fa3c85"
     },
     "page": {
-      "rules": 1067,
-      "rulesSha256": "876750511ae5afc88604b6a78fadad2b3c4e33661c90b1838dd3845a59edc15d",
-      "classes": 276,
-      "classesSha256": "d8439033262749395ace4b6df2a5b87fbd2361d453a648332de61f5e2e773eee"
+      "rules": 1086,
+      "rulesSha256": "0879d57ba89cc10c792c4ee0911fe470af58c80f120bfd78b89ce1ce5b756d10",
+      "classes": 285,
+      "classesSha256": "9161f0a24c38862d289cbb4ff0bf5a91a9f38c1a752f9ac7afcad27138e42a5b"
     },
     "sidebar": {
       "rules": 286,

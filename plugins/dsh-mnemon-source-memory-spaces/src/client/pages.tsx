@@ -1487,7 +1487,7 @@ export function ListPage(props: { client: MemorySpacesPageClient; revision: numb
           ? <div key={insightKey(insight)} className={css.governedRow} data-retention={insight.retention ?? 'normal'}>
               <label className={css.governedSelect} title={insight.retention === 'superseded' ? t('content.supersededTitle', { id: insight.superseded?.byId ?? '' }) : undefined}>
                 <input type="checkbox" checked={selectedIds.has(insightKey(insight))} onChange={() => toggleSelected(insight)} />
-                <span className={css.retentionBadge} data-retention={insight.retention ?? 'normal'}>{t(`content.retention.${insight.retention ?? 'normal'}` as MnemonKey)}</span>
+                <span className={css.retentionBadge} data-retention={insight.retention ?? 'normal'}>{t(`content.retention.${insight.retention ?? 'normal'}` as Parameters<typeof t>[0])}</span>
               </label>
               <InsightCard insight={insight} writeEnabled={props.writeEnabled} onForget={forget} onClone={props.onClone} onRelated={() => props.onExplore(insight.content)} />
             </div>
